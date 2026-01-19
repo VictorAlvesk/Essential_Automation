@@ -1,121 +1,95 @@
 import re
-import json
 
 def normalizar_numero_br(valor: str) -> float:
-    # Remove pontos de milhar e troca vírgula decimal por ponto
-    valor = valor.replace(".", "").replace(",", ".")
+    if not valor:
+        return 0.0
+    # Remove pontos de milhar (ex: 1.200,50 -> 1200,50)
+    valor = valor.replace(".", "")
+    # Troca vírgula decimal por ponto (ex: 1200,50 -> 1200.50)
+    valor = valor.replace(",", ".")
     try:
         return float(valor)
     except ValueError:
         return 0.0
 
 def normalizar_texto(texto: str) -> str:
-    # Remove quebras de linha, espaços extras e converte para maiúsculo
+    # Remove quebras de linha e normaliza espaços
     return " ".join(texto.upper().split())
 
 def extrair_fatura(texto: str) -> dict:
     dados = {}
     texto = normalizar_texto(texto)
 
-    # UC + MÊS / ANO
-    m = re.search(
-        r"(\d{7,}) (JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)/(\d{4})", 
-        texto
-    )
+    # --- 1. MÊS E ANO ---
+    m = re.search(r"(\d{7,})\s+(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)/(\d{4})", texto)
     dados["uc"] = m.group(1) if m else ""
     dados["mes"] = m.group(2) if m else ""
     dados["ano"] = int(m.group(3)) if m else 0
 
-    # DATAS DE LEITURA
-    m = re.search(
-        r"(\d{2}/\d{2}/\d{4}) (\d{2}/\d{2}/\d{4}) \d+ \d{2}/\d{2}/\d{4}", 
-        texto
-    )
-    dados["data_leitura_anterior"] = m.group(1) if m else ""
-    dados["data_leitura_atual"] = m.group(2) if m else ""
-
-    # MEDIDOR + LEITURAS
-    m = re.search(
-        r"(\d{7,}-\d) ENERGIA ATIVA - KWH ÚNICO (\d+) (\d+)", 
-        texto
-    )
-    if m:
-        dados["medidor"] = m.group(1)
-        dados["leitura_anterior"] = int(m.group(2))
-        dados["leitura_atual"] = int(m.group(3))
-    else:
-        dados["medidor"] = ""
-        dados["leitura_anterior"] = 0
-        dados["leitura_atual"] = 0
-
-    # ENERGIA ATIVA (CONSUMO REAL)
-    dados["energia_ativa"] = 0.0
-    # Pega o 4º número da linha de detalhe da energia ativa (Pula leituras e constante)
-    m_ativa = re.search(
-        r"ENERGIA ATIVA - KWH ÚNICO\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)", 
-        texto
-    )
-    if m_ativa:
-        dados["energia_ativa"] = normalizar_numero_br(m_ativa.group(1))
-
-    # ENERGIA GERAÇÃO (INJETADA)
-    dados["energia_gerada"] = 0.0
-    # Tenta pegar pela linha do medidor primeiro (mais preciso)
-    m_geracao_linha = re.search(
-        r"ENERGIA GERAÇÃO - KWH ÚNICO\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)", 
-        texto
-    )
-    if m_geracao_linha:
-        dados["energia_gerada"] = normalizar_numero_br(m_geracao_linha.group(1))
-    else:
-        # Fallback para o bloco SCEE
-        m_geracao_scee = re.search(r"GERAÇÃO CICLO.*?UC\s+\d+\s*:\s*([\d,]+)", texto)
-        if m_geracao_scee:
-            dados["energia_gerada"] = normalizar_numero_br(m_geracao_scee.group(1))
-
-    # CRÉDITO RECEBIDO (CORRIGIDO E ROBUSTO)
-    dados["credito_recebido"] = 0.0
-    
-    # Estratégia: Recortar apenas o bloco "INFORMAÇÕES DO SCEE" para evitar erros
-    # e usar regex "preguiçosa" (.*?) que ignora tudo até achar o número.
-    idx_scee = texto.find("INFORMAÇÕES DO SCEE")
-    
-    if idx_scee != -1:
-        # Pega os próximos 500 caracteres a partir do título SCEE
-        bloco_scee = texto[idx_scee : idx_scee + 500]
-        
-        # Regex: Procure "CRÉDITO RECEBIDO", ignore qualquer coisa (.*?) 
-        # até encontrar um número no formato Digito,Digito (\d+,\d+)
-        m_credito = re.search(r"CRÉDITO RECEBIDO.*?(\d+,\d+)", bloco_scee)
-        
-        if m_credito:
-            dados["credito_recebido"] = normalizar_numero_br(m_credito.group(1))
-    else:
-        # Fallback: Se não achar o bloco, tenta no texto todo
-        m_credito = re.search(r"CRÉDITO RECEBIDO.*?(\d+,\d+)", texto)
-        if m_credito:
-            dados["credito_recebido"] = normalizar_numero_br(m_credito.group(1))
-
-
-
-    # VALOR TOTAL
-    m = re.search(r"TOTAL (\d+,\d+)", texto)
-    dados["valor_fatura"] = normalizar_numero_br(m.group(1)) if m else 0.0
-
-    # ENDEREÇO
+    # --- 2. ENDEREÇO ---
     if "ENDEREÇO DE ENTREGA:" in texto:
         trecho = texto.split("ENDEREÇO DE ENTREGA:", 1)[1]
         dados["endereco"] = trecho.split("CEP:", 1)[0].strip()
     else:
         dados["endereco"] = ""
 
+    # --- 3. DATAS DE LEITURA ---
+    m = re.search(r"(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+\d+\s+\d{2}/\d{2}/\d{4}", texto)
+    dados["data_leitura_anterior"] = m.group(1) if m else ""
+    dados["data_leitura_atual"] = m.group(2) if m else ""
+
+    # --- 4. MEDIDOR ---
+    m = re.search(r"(\d{7,}-\d)\s+ENERGIA ATIVA - KWH ÚNICO\s+(\d+)\s+(\d+)", texto)
+    if m:
+        dados["medidor"] = m.group(1)
+        dados["leitura_anterior"] = int(m.group(2))
+        dados["leitura_atual"] = int(m.group(3))
+    else:
+        dados["medidor"] = "" 
+        dados["leitura_anterior"] = 0
+        dados["leitura_atual"] = 0
+
+    # --- 5. ENERGIA ATIVA (Consumo) ---
+    dados["energia_ativa"] = 0.0
+    m_ativa = re.search(r"ENERGIA ATIVA - KWH ÚNICO\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)", texto)
+    if m_ativa:
+        dados["energia_ativa"] = normalizar_numero_br(m_ativa.group(1))
+
+    # --- 6. GERAÇÃO (Injetada) ---
+    dados["energia_gerada"] = 0.0
+    m_geracao_linha = re.search(r"ENERGIA GERAÇÃO - KWH ÚNICO\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)", texto)
+    if m_geracao_linha:
+        dados["energia_gerada"] = normalizar_numero_br(m_geracao_linha.group(1))
+    
+    # --- 7. BLOCO SCEE (Crédito e Saldo) ---
+    dados["credito_recebido"] = 0.0
+    dados["saldo"] = 0.0
+
+    idx_scee = texto.find("INFORMAÇÕES DO SCEE")
+    if idx_scee != -1:
+        # Pega um bloco maior para garantir que o Saldo esteja dentro
+        bloco_busca = texto[idx_scee : idx_scee + 1000]
+        
+        # Fallback Geração (se não achou na linha do medidor)
+        if dados["energia_gerada"] == 0:
+            m_ger_scee = re.search(r"GERAÇÃO CICLO.*?UC\s+\d+\s*:\s*([\d,]+)", bloco_busca)
+            if m_ger_scee:
+                dados["energia_gerada"] = normalizar_numero_br(m_ger_scee.group(1))
+        
+        # CRÉDITO RECEBIDO (Usa busca 'preguiçosa' .*?)
+        m_credito = re.search(r"CRÉDITO RECEBIDO.*?(\d+,\d+)", bloco_busca)
+        if m_credito:
+            dados["credito_recebido"] = normalizar_numero_br(m_credito.group(1))
+
+        # SALDO KWH (CORRIGIDO)
+        # Procura "SALDO KWH", ignora dois pontos ou espaços, e pega números que podem ter PONTO (.) e VÍRGULA (,)
+        # Exemplo que ele captura: "1.250,55" ou "0,00"
+        m_saldo = re.search(r"SALDO KWH\s*[:=]?\s*([\d\.]+,\d{2})", bloco_busca)
+        if m_saldo:
+            dados["saldo"] = normalizar_numero_br(m_saldo.group(1))
+
+    # --- 8. VALOR TOTAL ---
+    m = re.search(r"TOTAL\s+(\d+,\d+)", texto)
+    dados["valor_fatura"] = normalizar_numero_br(m.group(1)) if m else 0.0
+
     return dados
-
-# --- TESTE COM O TEXTO FORNECIDO ---
-texto_fatura = """
-ENDEREÇO DE ENTREGA: RUA CEDROARANA, Q. E 3, L. 17, S/N, COND - RESID DOS IPES RESIDENCIAL ALPHAVILLE FLAMBOYANT CEP: 74884563 GOIANIA GO BRASIL Classificação: B B1 RESIDENCIAL - RESIDENCIAL NORMAL CONVENCIONAL Tipo de fornecimento: TRIFÁSICO Tensão Nominal Disp: 380 V Lim Min: 348,0 V Lim Max: 396,0 V DANIELA LONDE RABELO TAVEIRA CNPJ/CPF: 024.776.781-67 21/11/2025 22/12/2025 31 21/01/2026 RUA CEDROARANA, Q. E 3, L. 17, S/N, COND - RESID DOS IPES RESIDENCIAL ALPHAVILLE FLAMBOYANT 100777458 CEP: 74884563 GOIANIA GO BRASIL PERDAS DE TRANSFORMAÇÃO / RAMAL: 0% NOTA FISCAL Nº 174150869 - SÉRIE 0 / DATA DE EMISSÃO: 26/12/2025 13:03:23 Consulte pela Chave de Acesso em: 16676257 https://dfe-portal.svrs.rs.gov.br/NF3e/consulta chave de acesso: 52251201543032000104660001741508691070506255 Protocolo de autorização: 3522500041532659 - 26/12/2025 às 13:04:53 CFOP 5258: Venda de energia elétrica para não contribuinte DEZ/2025 14/01/2026 R$*********141,32 INFORMAÇÕES DO SCEE: GERAÇÃO CICLO (12/2025) KWH: UC 16676257 : 608,00, EXCEDENTE RECEBIDO KWH: UC 16676257 : 0,00, CRÉDITO RECEBIDO KWH 418,00, SALDO KWH: 0,00, SALDO A EXPIRAR EM 30 DIAS KWH: 0,00, SALDO A EXPIRAR EM 60 DIAS KWH: 0,00, CADASTRO RATEIO GERAÇÃO: UC 16676257 = 0% PERÍODO DE REFERÊNCIA DA APURAÇÃO DOS INDICADORES DE CONTINUIDADE = 10/2025. VRC = R$ 27,20050 CONFORME REN 1095/24 ANEEL, A PARTIR DE 01/03/26 O NÚMERO DA UC SERÁ PADRONIZADO EM TODO PAÍS, SENDO COMPOSTO POR UMA SEQUÊNCIA ATRIBUÍDA PELA DISTRIBUIDORA + CÓD DA DISTRIBUIDORA + DÍGITOS VERIFICADORES. MAIS INFORMAÇÕES NOS CANAIS DE ATENDIMENTO. CONFORME LEI FEDERAL 14.300/21, NO PERÍODO DE TRANSIÇÃO NÃO HAVERÁ COBRANÇA DA ENERGIA ELETRICA COMPENSADA. POR DETERMINAÇÃO DO ESTADO, SERÁ COBRADO O ICMS SOBRE O USO DA REDE. PARA MAIS INFORMAÇÕES, VISITE NOSSO SITE. 3544/25 PIS/PASEP 97,55 1,0455% 1,02 FORNECIMENTO ICMS 120,42 19% 22,88 ADC BANDEIRA AMARELA kWh 100,00 0,017546 1,75 0,08 1,75 19% 0,33 0,013377 COFINS 97,55 4,8306% 4,71 ADC BANDEIRA VERMELHA kWh 100,00 0,016994 1,70 0,08 1,7 19% 0,32 0,012957 CONSUMO NÃO COMPENSADO kWh 100,00 1,169735 116,97 5,57 116,97 19% 22,22 0,891810 CONSUMO SCEE kWh 418,00 0,804075 336,10 16 336,1 19% 63,86 0,613030 TIPOS DE MÊS/ANO CONSUMO FATURADO(kWh) DIAS FATURAMENTO INJEÇÃO SCEE - GD I kWh 418,00 0,804075 -336,10 -16 -336,1 19% -63,86 0,613030 504,00 ITENS FINANCEIROS 526,00 CONTRIB. ILUM. PÚBLICA - MUNICIPAL 17,38 6 5 0 1 8 8 , , 0 0 0 0 31 LIDA JUROS MORATÓRIA. 1,34 620,00 32 LIDA 704,00 MULTA - 10/2025. 2,18 637,00 32 LIDA 609,00 436,00 29 LIDA 507,00 337,00 30 LIDA 542,00 350,00 33 LIDA 570,00 305,00 28 LIDA 477,00 413,00 29 LIDA 464,00 614,00 32 LIDA 444,00 610,00 30 LIDA 523,00 478,00 29 LIDA 491,00 536,00 31 LIDA 456,00 698,00 30 LIDA 443,00 TOTAL 141,32 5,73 120,42 22,88 Nota fiscal emitida conforme determinação Judicial - Processo 2 - 5049774-14.2025.8.09.0000 - Valor 13119425-9 ENERGIA ATIVA - KWH ÚNICO 020940 021458 1,000000 518 controverso R$ 63.86. 13119425-9 ENERGIA GERAÇÃO - KWH ÚNICO 019819 020427 1,000000 608 3544/25 07/01/2026 BANCO ITAÚ 341-7 34191.09859 09322.782930 85633.150009 1 13260000014132 PAGÁVEL EM QUALQUER BANCO 14/01/2026 EQUATORIAL GOIAS DISTRIBUIDORA DE ENERGIA S/A 16676257 DEZ/2025 26/12/2025 2025123244777 MN 26/12/2025 109/85093227-8 109 R$ 141,32
-"""
-
-resultado = extrair_fatura(texto_fatura)
-print(json.dumps(resultado, indent=4, ensure_ascii=False))
-
