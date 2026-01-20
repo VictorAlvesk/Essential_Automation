@@ -7,7 +7,7 @@ def preparar_planilha(caminho_entrada, qtd_geradoras, qtd_beneficiarias):
     # Preparar Geradoras
     if "UC GERADORA" in wb.sheetnames:
         ws_modelo_ger = wb["UC GERADORA"]
-        for i in range(qtd_geradoras):
+        for i in range(qtd_gradoras):
             nome_aba = f"UC GERADORA {i+1}" if i > 0 else "UC GERADORA"
             if i == 0: ws_modelo_ger.title = nome_aba
             else: 
