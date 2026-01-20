@@ -63,10 +63,19 @@ def salvar_dados_multiplos(wb, dados_estruturados):
         if tipo == 'geradora':
             nome_aba = "UC GERADORA" if indice == 1 and "UC GERADORA" in wb.sheetnames else f"UC GERADORA {indice}"
             col_saldo_atual = 'P' # Geradora usa P
+            cols_uso = cols 
         else:
             nome_aba = f"UC BENEF. {indice}"
             col_saldo_atual = 'Q' # Beneficiária usa Q (SOLICITADO)
-        
+            cols_uso = {
+            **cols,
+            'consumo': 'F',
+            'credito': 'H',
+            'valor': 'J',
+            'medidor': 'S',
+            'leitura_med_ant': 'T', 
+            'leitura_med_atual': 'U'
+            }
         if nome_aba in wb.sheetnames:
             ws = wb[nome_aba]
             
@@ -83,19 +92,19 @@ def salvar_dados_multiplos(wb, dados_estruturados):
                         if celula and str(celula).strip() == mes_excel:
                             linha_destino = row
                             break
-                    
+                        
                     if linha_destino:
                         # Preenche tudo
                         ws[f"{cols['leitura_ant']}{linha_destino}"] = dados["data_leitura_anterior"]
                         ws[f"{cols['leitura_atual']}{linha_destino}"] = dados["data_leitura_atual"]
                         ws[f"{cols['geracao']}{linha_destino}"] = dados["energia_gerada"]
-                        ws[f"{cols['credito']}{linha_destino}"] = dados["credito_recebido"]
-                        ws[f"{cols['consumo']}{linha_destino}"] = dados["energia_ativa"]
-                        ws[f"{cols['valor']}{linha_destino}"] = dados["valor_fatura"]
+                        ws[f"{cols_uso['credito']}{linha_destino}"] = dados["credito_recebido"]
+                        ws[f"{cols_uso['consumo']}{linha_destino}"] = dados["energia_ativa"]
+                        ws[f"{cols_uso['valor']}{linha_destino}"] = dados["valor_fatura"]
                         ws[f"{col_saldo_atual}{linha_destino}"] = dados["saldo"] # P ou Q
-                        ws[f"{cols['medidor']}{linha_destino}"] = dados["medidor"]
-                        ws[f"{cols['leitura_med_ant']}{linha_destino}"] = dados["leitura_anterior"]
-                        ws[f"{cols['leitura_med_atual']}{linha_destino}"] = dados["leitura_atual"]
+                        ws[f"{cols_uso['medidor']}{linha_destino}"] = dados["medidor"]
+                        ws[f"{cols_uso['leitura_med_ant']}{linha_destino}"] = dados["leitura_anterior"]
+                        ws[f"{cols_uso['leitura_med_atual']}{linha_destino}"] = dados["leitura_atual"]
 
                 # --- 2. PREENCHIMENTO RETROATIVO (HISTÓRICO) ---
                 # Útil se enviou apenas 1 fatura e quer preencher os consumos anteriores
