@@ -20,7 +20,7 @@ def extrair_historico_consumo(texto: str) -> list:
     historico = []
     # Regex para capturar: MES/ANO (2 digitos) espaço NUMERO (kWh)
     # Ex: DEZ/24 518
-    padrao = r"(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)/(\d{2})\s+([\d\.,]+)"
+    padrao = r"(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)[\/\-](\d{2,4})\s+([\d\.,]+)"
     
     matches = re.findall(padrao, texto)
     for mes, ano, kwh in matches:
