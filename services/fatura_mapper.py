@@ -23,7 +23,15 @@ def extrair_historico_consumo(texto: str) -> list:
     padrao = r"(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)[\/\-](\d{2,4})\s+([\d\.,]+)"
     
     matches = re.findall(padrao, texto)
-    print("DEBUG - HISTÓRICO ENCONTRADO:", matches) #MUDEI AQUI 
+    for m in matches:
+        print(
+            "DEBUG - MATCH:",
+            m.group(0),
+            "| mes:", m.group(1),
+            "| ano:", m.group(2),
+            "| numero:", m.group(3)
+        )
+
     
     for mes, ano, kwh in matches:
         historico.append({
