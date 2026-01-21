@@ -1,5 +1,6 @@
 import openpyxl
 from openpyxl.cell.cell import MergedCell
+import datetime 
 
 def preparar_planilha(caminho_entrada, qtd_geradoras, qtd_beneficiarias):
     wb = openpyxl.load_workbook(caminho_entrada)
