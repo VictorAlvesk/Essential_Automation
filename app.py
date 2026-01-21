@@ -7,6 +7,7 @@ from services.excel_writer import preparar_planilha, salvar_dados_multiplos
 st.set_page_config(page_title="Balanço Equatorial Multi-UC", layout="wide")
 
 st.title("⚡ Sistema de Balanço Energético (Multi-UC)")
+st.subheader("Essencial Energia Eficiente")
 st.markdown("Configure a quantidade de UCs, faça o upload da planilha base e das faturas.")
 
 # --- BARRA LATERAL PARA CONFIGURAÇÃO ---
