@@ -2,7 +2,10 @@ import openpyxl
 from openpyxl.cell.cell import MergedCell
 
 def preparar_planilha(caminho_entrada, qtd_geradoras, qtd_beneficiarias):
-    """Carrega o modelo e cria as abas necessárias duplicando os modelos existentes."""
+    """
+    Carrega o modelo e cria as abas necessárias para Geradoras e Beneficiárias,
+    duplicando os modelos existentes no arquivo Excel.
+    """
     wb = openpyxl.load_workbook(caminho_entrada)
     
     # Preparar Geradoras
@@ -43,38 +46,34 @@ def safe_write(ws, col, row, value):
         cell.value = value
 
 def salvar_dados_multiplos(wb, dados_estruturados, grupo):
-    """Mapeia e escreve os dados nas abas corretas dependendo do grupo (A ou B)."""
+    """
+    Mapeia e escreve os dados nas abas corretas. 
+    Para Grupo A: Preenche colunas B, C, D (Consumo) e L, M, N (Demanda).
+    """
     
-    # Mapa para o Grupo A: jan/25, fev/25...
+    # Formato para bater com a planilha de dimensionamento (image_6498ac.png)
     mapa_meses_a = {
         "JAN": "jan/25", "FEV": "fev/25", "MAR": "mar/25", "ABR": "abr/25",
         "MAI": "mai/25", "JUN": "jun/25", "JUL": "jul/25", "AGO": "ago/25",
         "SET": "set/25", "OUT": "out/25", "NOV": "nov/25", "DEZ": "dez/25"
     }
 
-    # Mapa para o Grupo B: Jan, Fev, Mar...
-    mapa_meses_b = {
-        "JAN": "Jan", "FEV": "Fev", "MAR": "Mar", "ABR": "Abr",
-        "MAI": "Mai", "JUN": "Jun", "JUL": "Jul", "AGO": "Ago",
-        "SET": "Set", "OUT": "Out", "NOV": "Nov", "DEZ": "Dez"
-    }
+    # Mapa para o Grupo B
+    mapa_meses_b = {k: k.capitalize() for k in mapa_meses_a.keys()}
 
     for item in dados_estruturados:
         tipo = item['tipo']
         indice = item['indice']
         faturas = item['dados']
 
-        # Lógica de nomes de abas
+        # Identificação da Aba
         if grupo == "A":
-            # Tenta encontrar a aba específica de dimensionamento ou a padrão
-            nome_aba = "GRUPO A" if "GRUPO A" in wb.sheetnames else f"UC BENEF. {indice}"
-            if tipo == 'geradora' and "UC GERADORA" in wb.sheetnames:
+            # Tenta a aba específica de Dimensionamento do Grupo A ou a padrão da UC
+            nome_aba = "DIMENSIONAMENTO - GRUPO A" if "DIMENSIONAMENTO - GRUPO A" in wb.sheetnames else f"UC BENEF. {indice}"
+            if tipo == 'geradora':
                 nome_aba = "UC GERADORA" if indice == 1 else f"UC GERADORA {indice}"
         else:
-            if tipo == 'geradora':
-                nome_aba = "UC GERADORA" if indice == 1 and "UC GERADORA" in wb.sheetnames else f"UC GERADORA {indice}"
-            else:
-                nome_aba = f"UC BENEF. {indice}"
+            nome_aba = "UC GERADORA" if tipo == 'geradora' and indice == 1 else f"UC BENEF. {indice}"
 
         if nome_aba not in wb.sheetnames:
             continue
@@ -82,69 +81,45 @@ def salvar_dados_multiplos(wb, dados_estruturados, grupo):
         ws = wb[nome_aba]
 
         if grupo == "B":
-            # ===============================
-            # LÓGICA GRUPO B (BAIXA TENSÃO)
-            # ===============================
-            cols_base = {
-                'leitura_ant': 'B', 'leitura_atual': 'C', 'geracao': 'I', 
-                'credito': 'J', 'consumo': 'K', 'valor': 'N', 'saldo': 'P',
-                'medidor': 'R', 'leitura_med_ant': 'S', 'leitura_med_atual': 'T'
+            # --- LÓGICA GRUPO B ---
+            cols_b = {
+                'consumo': 'F' if tipo == 'beneficiaria' else 'K',
+                'saldo': 'Q' if tipo == 'beneficiaria' else 'P',
+                'valor': 'J' if tipo == 'beneficiaria' else 'N'
             }
-            
-            if tipo == 'beneficiaria':
-                cols_uso = {
-                    **cols_base, 'consumo': 'F', 'credito': 'H', 'valor': 'J', 
-                    'saldo': 'Q', 'leitura_med_ant': 'T', 'leitura_med_atual': 'U'
-                }
-            else:
-                cols_uso = cols_base
-
             for dados in faturas:
-                mes_pdf = dados.get("mes", "")
-                mes_excel = mapa_meses_b.get(mes_pdf)
-                
-                if mes_excel:
-                    for row in range(5, 40):
-                        celula = ws[f"A{row}"].value
-                        if celula and str(celula).strip().lower() == mes_excel.lower():
-                            ws[f"{cols_uso['leitura_ant']}{row}"] = dados.get("data_leitura_anterior")
-                            ws[f"{cols_uso['leitura_atual']}{row}"] = dados.get("data_leitura_atual")
-                            ws[f"{cols_uso['geracao']}{row}"] = dados.get("energia_gerada")
-                            ws[f"{cols_uso['credito']}{row}"] = dados.get("credito_recebido")
-                            ws[f"{cols_uso['consumo']}{row}"] = dados.get("energia_ativa")
-                            ws[f"{cols_uso['valor']}{row}"] = dados.get("valor_fatura")
-                            ws[f"{cols_uso['saldo']}{row}"] = dados.get("saldo")
-                            ws[f"{cols_uso['medidor']}{row}"] = dados.get("medidor")
-                            ws[f"{cols_uso['leitura_med_ant']}{row}"] = dados.get("leitura_anterior")
-                            ws[f"{cols_uso['leitura_med_atual']}{row}"] = dados.get("leitura_atual")
-                            break
+                mes_ref = mapa_meses_b.get(dados.get("mes"))
+                for row in range(5, 40):
+                    if str(ws[f"A{row}"].value).strip() == mes_ref:
+                        ws[f"{cols_b['consumo']}{row}"] = dados.get("energia_ativa")
+                        ws[f"{cols_b['saldo']}{row}"] = dados.get("saldo")
+                        ws[f"{cols_b['valor']}{row}"] = dados.get("valor_fatura")
+                        break
         
         else:
-            # ===============================
-            # LÓGICA GRUPO A (ALTA TENSÃO)
-            # ===============================
+            # --- LÓGICA GRUPO A (DETALHADO) ---
             for dados in faturas:
-                # 1. Preencher Mês Atual da Fatura
+                # 1. Preenchimento do Mês da Fatura Atual
                 mes_ref = mapa_meses_a.get(dados.get("mes"))
                 if mes_ref:
                     for row in range(5, 20):
                         celula_a = str(ws[f"A{row}"].value).strip().lower()
                         if celula_a == mes_ref.lower():
-                            # DADOS DE CONSUMO (Colunas B, C, D)
+                            # Consumo: B (Ponta), C (Fora Ponta), D (Reservado)
                             ws[f"B{row}"] = dados.get("c_p")   
                             ws[f"C{row}"] = dados.get("c_fp")  
                             ws[f"D{row}"] = dados.get("c_hr")  
-                            # DADOS DE DEMANDA (Colunas L, M, N)
+                            # Demanda: L (Ponta), M (Fora Ponta), N (Reservado)
                             ws[f"L{row}"] = dados.get("d_p")   
                             ws[f"M{row}"] = dados.get("d_fp")  
-                            ws[f"N{row}"] = dados.get("d_hr") # Incluída Demanda Reservada
+                            ws[f"N{row}"] = dados.get("d_hr")
                             break
 
-                # 2. Preencher Histórico Retroativo (Preenchimento Automático)
-                if "historico" in dados and dados["historico"]:
+                # 2. Preenchimento Automático via Histórico (Retroativo)
+                if "historico" in dados:
                     for h in dados["historico"]:
                         mes_h = mapa_meses_a.get(h['mes'])
-                        # Pula o mês atual para não duplicar
+                        # Não sobrescreve o mês atual da fatura
                         if not mes_h or mes_h.lower() == str(mes_ref).lower():
                             continue
                         

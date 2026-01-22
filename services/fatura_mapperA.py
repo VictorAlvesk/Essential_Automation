@@ -1,9 +1,9 @@
 import re
 
 def normalizar_numero_br(valor: str) -> float:
-    """Converte strings no formato brasileiro (1.234,56) para float (1234.56)."""
     if not valor:
         return 0.0
+    # Remove pontos de milhar e substitui vírgula decimal por ponto
     valor = valor.replace(".", "").replace(",", ".")
     try:
         return float(valor)
@@ -11,16 +11,16 @@ def normalizar_numero_br(valor: str) -> float:
         return 0.0
 
 def normalizar_texto(texto: str) -> str:
-    """Padroniza o texto em maiúsculas e remove espaços extras."""
     return " ".join(texto.upper().split())
 
 def extrair_historico_consumo(texto: str) -> list:
     """
-    Captura as colunas da tabela de histórico: Mês/Ano, Demanda (P, FP, RE), 
-    Consumo Faturado (P, FP, RE) e Horário Reservado (Consumo).
+    Extrai a tabela de histórico de Grupo A (image_b84cef.png).
+    Captura: Mês/Ano, Demandas (P, FP, RE), Consumos (P, FP, RE) e Reservado.
     """
     historico = []
-    # Regex flexível para capturar a linha da tabela (Mês/Ano + sequência de valores) 
+    # Regex para capturar Mês/Ano e a sequência de valores numéricos da tabela 
+    # O padrão busca a sigla do mês, o ano e um bloco de 7 a 9 valores decimais
     padrao = r"(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\s*[\/\-]\s*(\d{2})((?:\s+[\d\.,]+){7,9})"
     
     matches = re.findall(padrao, texto)
@@ -28,60 +28,70 @@ def extrair_historico_consumo(texto: str) -> list:
     for mes, ano, valores_str in matches:
         v = valores_str.strip().split()
         if len(v) >= 7:
-            # Mapeamento conforme a tabela de histórico de 9 colunas 
             historico.append({
                 "mes": mes,
-                "ano": ano,
+                "ano": int(ano),
+                # Mapeamento seguindo a ordem da tabela da Equatorial 
                 "demanda_p": normalizar_numero_br(v[0]),
                 "demanda_fp": normalizar_numero_br(v[1]),
-                "demanda_hr": normalizar_numero_br(v[2]), # Demanda Reativo Excedente/Reservado
+                "demanda_re": normalizar_numero_br(v[2]),
                 "consumo_p": normalizar_numero_br(v[3]),
                 "consumo_fp": normalizar_numero_br(v[4]),
-                "consumo_hr": normalizar_numero_br(v[6])  # Consumo Horário Reservado
+                "consumo_re": normalizar_numero_br(v[5]),
+                "reservado_consumo": normalizar_numero_br(v[6])
             })
     return historico
 
 def extrair_fatura(texto: str) -> dict:
-    """Realiza a extração completa dos dados da fatura para o Grupo A."""
     dados = {}
-    texto_norm = normalizar_texto(texto)
+    texto_bruto = texto # Mantém original para buscas sensíveis a quebra de linha
+    texto = normalizar_texto(texto)
 
-    # --- 1. MÊS E UC ---
-    m_uc_mes = re.search(r"(\d{7,})\s+(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)/(\d{4})", texto_norm)
-    dados["uc"] = m_uc_mes.group(1) if m_uc_mes else ""
-    dados["mes"] = m_uc_mes.group(2) if m_uc_mes else ""
-    dados["ano"] = m_uc_mes.group(3)[2:] if m_uc_mes else "00" # Pega os dois últimos dígitos do ano
+    # --- 1. MÊS, ANO E UC ---
+    # Busca o padrão "UC MÊS/ANO" (ex: 140753532 DEZ/2025) [cite: 7]
+    m = re.search(r"(\d{7,})\s+(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)/(\d{4})", texto)
+    dados["uc"] = m.group(1) if m else ""
+    dados["mes"] = m.group(2) if m else ""
+    dados["ano"] = int(m.group(3)) if m else 0
 
-    # --- 2. CONSUMO E DEMANDA ATUAL (PONTA, FORA PONTA E RESERVADO) ---
+    # --- 2. DADOS DE CONSUMO E DEMANDA ATUAL (INDIVIDUAL) ---
+    # Grupo A separa por postos tarifários (Ponta, Fora Ponta, Reservado) 
     pats = {
-        "c_p": r"ENERGIA ATIVA - KWH PONTA\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)",
-        "c_fp": r"ENERGIA ATIVA - KWH FORA PONTA\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)",
-        "c_hr": r"ENERGIA ATIVA - KWH RESERVADO\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)",
-        "d_p": r"DEMANDA KW PONTA\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)",
-        "d_fp": r"DEMANDA KW FORA PONTA\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)",
-        "d_hr": r"DEMANDA KW RESERVADO\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)"
+        "c_p": r"ENERGIA ATIVA-KWH\s+PONTA\s+\d+\s+\d+\s+[\d,.]+\s+([\d,.]+)",
+        "c_fp": r"ENERGIA ATIVA-KWH\s+FORA PONTA\s+\d+\s+\d+\s+[\d,.]+\s+([\d,.]+)",
+        "c_hr": r"ENERGIA ATIVA-KWH\s+RESERVADO\s+\d+\s+\d+\s+[\d,.]+\s+([\d,.]+)",
+        "d_p": r"DEMANDA KW\s+PONTA\s+\d+\s+\d+\s+[\d,.]+\s+([\d,.]+)",
+        "d_fp": r"DEMANDA KW\s+FORA PONTA\s+\d+\s+\d+\s+[\d,.]+\s+([\d,.]+)",
+        "d_hr": r"DEMANDA KW\s+RESERVADO\s+\d+\s+\d+\s+[\d,.]+\s+([\d,.]+)"
     }
+    
     for chave, pat in pats.items():
-        m = re.search(pat, texto_norm)
-        dados[chave] = normalizar_numero_br(m.group(1)) if m else 0.0
+        match = re.search(pat, texto)
+        dados[chave] = normalizar_numero_br(match.group(1)) if match else 0.0
 
-    # --- 3. SALDO TOTAL (SOMA P + FP + HR) ---
-    # Soma todos os componentes do saldo encontrados no bloco SCEE 
+    # --- 3. SALDO TOTAL SCEE (Soma P + FP + HR) ---
+    # Captura a linha de saldo e soma os componentes (P, FP, HR) 
     dados["saldo"] = 0.0
-    idx_scee = texto_norm.find("INFORMAÇÕES DO SCEE")
+    idx_scee = texto.find("INFORMAÇÕES DO SCEE")
     if idx_scee != -1:
-        bloco = texto_norm[idx_scee : idx_scee + 800]
-        # Captura o trecho específico do saldo para evitar pegar outros valores do bloco 
+        # Pega um bloco após o título para busca
+        bloco = texto[idx_scee : idx_scee + 800]
         m_saldo = re.search(r"SALDO KWH.*?(?=SALDO A EXPIRAR|TOTAL|$)", bloco)
         if m_saldo:
-            valores_encontrados = re.findall(r"[\d\.]*,\d{2}", m_saldo.group(0))
-            dados["saldo"] = sum(normalizar_numero_br(v) for v in valores_encontrados)
+            # Encontra todos os valores numéricos (0,00) no trecho do saldo
+            valores = re.findall(r"[\d\.]*,\d{2}", m_saldo.group(0))
+            dados["saldo"] = sum(normalizar_numero_br(v) for v in valores)
 
-    # --- 4. HISTÓRICO COMPLETO ---
-    dados["historico"] = extrair_historico_consumo(texto_norm)
-    
-    # --- 5. VALOR TOTAL DA FATURA ---
-    m_val = re.search(r"TOTAL\s+([\d\.]+,\d{2})", texto_norm)
+    # --- 4. VALOR TOTAL ---
+    m_val = re.search(r"TOTAL\s+([\d\.]+,\d{2})", texto)
     dados["valor_fatura"] = normalizar_numero_br(m_val.group(1)) if m_val else 0.0
+
+    # --- 5. HISTÓRICO COMPLETO ---
+    dados["historico"] = extrair_historico_consumo(texto)
+
+    # DEBUG
+    print(f"\n[DEBUG MAPPER A] UC: {dados.get('uc')} | Mês Ref: {dados.get('mes')}")
+    print(f"[DEBUG MAPPER A] Saldo Totalizado: {dados['saldo']}")
+    print(f"[DEBUG MAPPER A] Itens Histórico: {len(dados['historico'])}\n")
 
     return dados
