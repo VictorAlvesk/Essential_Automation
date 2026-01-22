@@ -1,5 +1,6 @@
 import openpyxl
 from openpyxl.cell.cell import MergedCell
+import datetime 
 
 def preparar_planilha(caminho_entrada, qtd_geradoras, qtd_beneficiarias):
     wb = openpyxl.load_workbook(caminho_entrada)
@@ -111,24 +112,31 @@ def salvar_dados_multiplos(wb, dados_estruturados):
                 if "historico" in dados and dados["historico"]:
                     for hist in dados["historico"]:
                         mes_hist = hist['mes']
-                        if mes_hist in mapa_meses:
-                            mes_excel_hist = mapa_meses[mes_hist]
-                            
-                            # Busca a linha do mês histórico
-                            linha_hist = None
-                            for row in range(5, 40):
-                                celula = ws[f"A{row}"].value
-                                if celula and str(celula).strip() == mes_excel_hist:
-                                    linha_hist = row
-                                    break
-                            
-                            # Se achou a linha e a célula de consumo está vazia (para não sobrescrever dados reais)
-                            if linha_hist:
-                                 # Não sobrescrever o mês da fatura atual
-                                if mes_hist != dados.get("mes"):
-                                    ws[f"{cols_uso['consumo']}{linha_hist}"] = hist['consumo']
-                                    print(f"Histórico preenchido: {mes_hist}/{hist['ano']} "f"- {hist['consumo']} kWh na aba {nome_aba}")
-                        
+                        linha_hist = None
+                        for row in range(5, 45):
+                            cell_val = ws[f"A{row}"].value
+                            if not cell_val: continue
+                            mes_comparacao = ""
+                            # Se a célula for Data (comum no Excel), extraímos o mês dela
+                            if isinstance(cell_val, (datetime.datetime, datetime.date)):
+                                # Mapeia o número do mês (1-12) para a sigla (JAN-DEZ)
+                                siglas = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"]
+                                mes_comparacao = siglas[cell_val.month - 1]
+                            else:
+                                # Se for texto ("Jan", "Janeiro"), normalizamos para comparar
+                                texto_cell = str(cell_val).strip().upper()
+                                for sigla, nome_mapa in mapa_meses.items():
+                                    if sigla in texto_cell or nome_mapa.upper() in texto_cell:
+                                        mes_comparacao = sigla
+                                        break
+                            if mes_comparacao == mes_hist:
+                                linha_hist = row
+                                break
+                        # Preenche o consumo se achar a linha e não for o mês da fatura atual
+                        if linha_hist and mes_hist != dados.get("mes"):
+                            col_cons = cols_uso['consumo']
+                            ws[f"{col_cons}{linha_hist}"] = hist['consumo']
+                                                
     # --- 3. RESUMO (UC e Endereço) ---
     ws_resumo = None
     for sheet in wb.sheetnames:

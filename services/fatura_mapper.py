@@ -25,10 +25,12 @@ def extrair_historico_consumo(texto: str) -> list:
     matches = re.findall(padrao, texto)
     
     for mes, ano, kwh in matches:
-        historico.append({
-            "mes": mes,
-            "ano": int(ano),
-            "consumo": normalizar_numero_br(kwh)
+        consumo = normalizar_numero_br(kwh)
+        if consumo > 0:
+            historico.append({
+                "mes": mes.upper(),
+                "ano": int(ano),
+                "consumo": consumo
         })
     return historico
 
