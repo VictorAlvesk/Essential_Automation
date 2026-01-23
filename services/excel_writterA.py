@@ -63,9 +63,11 @@ def salvar_dados_A(wb, dados_estruturados):
                 for row in range(5, 25):
                     celula = ws_geral[f"A{row}"].value
                     if isinstance(celula, datetime.datetime) and celula.month == mes_num:
+                        # Dados consumo 
                         ws_geral[f"B{row}"] = dados.get("c_p", 0.0)
                         ws_geral[f"C{row}"] = dados.get("c_fp", 0.0)
                         ws_geral[f"D{row}"] = dados.get("c_hr", 0.0)
+                        # Dados demanda 
                         ws_geral[f"M{row}"] = dados.get("d_p", 0.0)
                         ws_geral[f"N{row}"] = dados.get("d_fp", 0.0)
                         ws_geral[f"O{row}"] = dados.get("d_hr", 0.0)

@@ -51,9 +51,9 @@ def extrair_fatura(texto: str) -> dict:
         "c_p": r"ENERGIA ATIVA - KWH PONTA\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)",
         "c_fp": r"ENERGIA ATIVA - KWH FORA PONTA\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)",
         "c_hr": r"ENERGIA ATIVA - KWH RESERVADO\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)",
-        "d_p": r"DEMANDA KW PONTA\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)",
-        "d_fp": r"DEMANDA KW FORA PONTA\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)",
-        "d_hr": r"DEMANDA KW RESERVADO\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)"
+        "d_p": r"DEMANDA - KW PONTA\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)",
+        "d_fp": r"DEMANDA - KW FORA PONTA\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)",
+        "d_hr": r"DEMANDA - KW RESERVADO\s+\d+\s+\d+\s+[\d,]+\s+([\d,]+)"
     }
     for chave, pat in pats.items():
         m = re.search(pat, texto_norm)
