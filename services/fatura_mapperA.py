@@ -59,21 +59,31 @@ def extrair_fatura(texto: str) -> dict:
         m = re.search(pat, texto_norm)
         dados[chave] = normalizar_numero_br(m.group(1)) if m else 0.0
 
-    # --- 5. GERAÇÃO E SALDO ---
-    m_ger = re.search(r"ENERGIA (?:ATIVA|GERAÇÃO).*?INJETADA.*?\s+[\d,]+\s+([\d,]+)", texto_norm)
-    dados["energia_gerada"] = normalizar_numero_br(m_ger.group(1)) if m_ger else 0.0
-    
-    dados["saldo"] = 0.0
-    dados["credito_recebido"] = 0.0
-    if "INFORMAÇÕES DO SCEE" in texto_norm:
-        bloco = texto_norm[texto_norm.find("INFORMAÇÕES DO SCEE") : texto_norm.find("INFORMAÇÕES DO SCEE")+1000]
-        m_cred = re.search(r"CRÉDITO RECEBIDO.*?([\d\.]+,\d{2})", bloco)
-        dados["credito_recebido"] = normalizar_numero_br(m_cred.group(1)) if m_cred else 0.0
-        m_s = re.search(r"SALDO KWH.*?(?=SALDO A EXPIRAR|TOTAL|$)", bloco)
-        if m_s: dados["saldo"] = sum(normalizar_numero_br(v) for v in re.findall(r"[\d\.]*,\d{2}", m_s.group(0)))
+    # 5. Energia Injetada (Geração) - SOMA P + FP + HR 
+    # Na fatura exemplo: FP=5989,23 
+    pats_inj = [
+        r"ENERGIA GERAÇÃO-KWH PONTA\s+\d+\s+\d+\s+[\d,.]+\s+([\d,.]+)",
+        r"ENERGIA GERAÇÃO-KWH FORA PONTA\s+\d+\s+\d+\s+[\d,.]+\s+([\d,.]+)",
+        r"ENERGIA GERAÇÃO-KWH RESERVADO\s+\d+\s+\d+\s+[\d,.]+\s+([\d,.]+)"
+    ]
+    dados["energia_gerada"] = sum(normalizar_numero_br(re.search(p, texto_norm).group(1)) 
+                                 if re.search(p, texto_norm) else 0.0 for p in pats_inj)
+
+    # 6. Crédito e Saldo SCEE [cite: 11, 12, 13]
+    # Crédito Recebido Total: 6.239,35 [cite: 12]
+    m_credito = re.search(r"CREDITO RECEBIDO KWH\s+([\d\.]+,\d{2})", texto_norm)
+    dados["credito_recebido"] = normalizar_numero_br(m_credito.group(1)) if m_credito else 0.0
+
+    # Saldo total (Soma P + FP + HR) [cite: 13]
+    m_saldo = re.search(r"SALDO KWH\s+P-([\d,.]+),\s+FP-([\d,.]+),\s+HR-([\d,.]+)", texto_norm)
+    if m_saldo:
+        dados["saldo"] = sum(normalizar_numero_br(m_saldo.group(i)) for i in range(1, 4))
+    else:
+        dados["saldo"] = 0.0
+
+    # 7. Valor Total [cite: 6, 46, 67]
+    m_val = re.search(r"TOTAL A PAGAR\s+R\$\s*([\d\.]+,\d{2})", texto_norm)
+    dados["valor_fatura"] = normalizar_numero_br(m_val.group(1)) if m_val else 0.0
 
     dados["historico"] = extrair_historico_consumo(texto_norm)
-    m_val = re.search(r"TOTAL\s+([\d\.]+,\d{2})", texto_norm)
-    dados["valor_fatura"] = normalizar_numero_br(m_val.group(1)) if m_val else 0.0
-    
     return dados
