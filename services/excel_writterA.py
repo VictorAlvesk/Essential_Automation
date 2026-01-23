@@ -1,4 +1,5 @@
 import openpyxl
+from openpyxl.cell.cell import MergedCell
 import datetime
 
 def preparar_planilha(caminho_entrada, qtd_geradoras, qtd_beneficiarias):
@@ -27,74 +28,91 @@ def preparar_planilha(caminho_entrada, qtd_geradoras, qtd_beneficiarias):
                 nova.title = nome_aba
     return wb
 
+def safe_write(ws, col, row, value):
+    """Escreve em células, tratando corretamente células mescladas."""
+    coord = f"{col}{row}"
+    cell = ws[coord]
+    if isinstance(cell, MergedCell):
+        for rng in ws.merged_cells.ranges:
+            if coord in rng:
+                ws[rng.start_cell.coordinate].value = value
+                return
+    else:
+        cell.value = value
+
 def salvar_dados_A(wb, dados_estruturados):
-    """Mapeia os dados para as abas individuais e para a aba geral do Grupo A."""
+    """Mapeia os dados para as abas individuais, dimensionamento e resumo."""
     
     meses_map = {"JAN": 1, "FEV": 2, "MAR": 3, "ABR": 4, "MAI": 5, "JUN": 6, 
                  "JUL": 7, "AGO": 8, "SET": 9, "OUT": 10, "NOV": 11, "DEZ": 12}
 
-    # Aba de Dimensionamento Consolidado
     nome_aba_geral = next((s for s in wb.sheetnames if "GRUPO A" in s.upper()), "GRUPO A")
     ws_geral = wb[nome_aba_geral] if nome_aba_geral in wb.sheetnames else None
 
     for item in dados_estruturados:
         tipo, indice, faturas = item['tipo'], item['indice'], item['dados']
-        
-        # Identificação da Aba Individual
-        if tipo == 'geradora':
-            nome_aba_uc = "UC GERADORA" if indice == 1 else f"UC GERADORA {indice}"
-        else:
-            nome_aba_uc = f"UC BENEF. {indice}"
-            
+        nome_aba_uc = "UC GERADORA" if tipo == 'geradora' and indice == 1 else (f"UC GERADORA {indice}" if tipo == 'geradora' else f"UC BENEF. {indice}")
         ws_uc = wb[nome_aba_uc] if nome_aba_uc in wb.sheetnames else None
 
         for dados in faturas:
-            mes_ref = dados.get("mes")
-            mes_num = meses_map.get(mes_ref)
+            mes_num = meses_map.get(dados.get("mes"))
             if not mes_num: continue
 
-            # --- 1. PREENCHIMENTO NA ABA GRUPO A (DADOS TÉCNICOS) ---
+            # --- 1. ABA DIMENSIONAMENTO GERAL ---
             if ws_geral:
                 for row in range(5, 25):
                     celula = ws_geral[f"A{row}"].value
                     if isinstance(celula, datetime.datetime) and celula.month == mes_num:
-                        # Consumo P, FP, HR nas colunas B, C, D
+                        # Dados consumo 
                         ws_geral[f"B{row}"] = dados.get("c_p", 0.0)
                         ws_geral[f"C{row}"] = dados.get("c_fp", 0.0)
                         ws_geral[f"D{row}"] = dados.get("c_hr", 0.0)
-                        # Demanda P, FP, HR nas colunas M, N, O
+                        # Dados demanda 
                         ws_geral[f"M{row}"] = dados.get("d_p", 0.0)
                         ws_geral[f"N{row}"] = dados.get("d_fp", 0.0)
                         ws_geral[f"O{row}"] = dados.get("d_hr", 0.0)
                         break
 
-            # --- 2. PREENCHIMENTO NA ABA INDIVIDUAL (DATAS E ENERGIAS) ---
+            # --- 2. ABAS INDIVIDUAIS (Parte Amarela) ---
             if ws_uc:
                 for row in range(5, 45):
                     celula = ws_uc[f"A{row}"].value
-                    # Verifica correspondência de mês (independente do ano)
                     if isinstance(celula, datetime.datetime) and celula.month == mes_num:
-                        
-                        # Colunas Amarelas (Datas)
                         ws_uc[f"B{row}"] = dados.get("data_leitura_anterior")
                         ws_uc[f"C{row}"] = dados.get("data_leitura_atual")
-                        
-                        # Cálculo do Consumo Total (Fornecida)
-                        cons_total = dados.get("c_p", 0) + dados.get("c_fp", 0) + dados.get("c_hr", 0)
+                        c_total = dados.get("c_p", 0) + dados.get("c_fp", 0) + dados.get("c_hr", 0)
 
                         if tipo == 'geradora':
-                            # Conforme BALANCO_GRUPO_A.xlsx - UC GERADORA.csv
-                            ws_uc[f"G{row}"] = dados.get("energia_gerada", 0.0) # E. Injetada
-                            ws_uc[f"H{row}"] = dados.get("credito_recebido", 0.0) # E. Compensada
-                            ws_uc[f"I{row}"] = cons_total # E. Fornecida
+                            ws_uc[f"G{row}"] = dados.get("energia_gerada", 0.0)
+                            ws_uc[f"H{row}"] = dados.get("credito_recebido", 0.0)
+                            ws_uc[f"I{row}"] = c_total
                             ws_uc[f"L{row}"] = dados.get("valor_fatura", 0.0)
-                            ws_uc[f"M{row}"] = dados.get("saldo", 0.0) # Saldo/Crédito
+                            ws_uc[f"M{row}"] = dados.get("saldo", 0.0)
                         else:
-                            # Conforme BALANCO_GRUPO_A.xlsx - UC BENEF. 1.csv
-                            ws_uc[f"F{row}"] = cons_total # E. Fornecida
-                            ws_uc[f"H{row}"] = dados.get("credito_recebido", 0.0) # E. Injetada (Compensada)
+                            ws_uc[f"F{row}"] = c_total
+                            ws_uc[f"H{row}"] = dados.get("credito_recebido", 0.0)
                             ws_uc[f"J{row}"] = dados.get("valor_fatura", 0.0)
-                            ws_uc[f"Q{row}"] = dados.get("saldo", 0.0) # Balanço
+                            ws_uc[f"Q{row}"] = dados.get("saldo", 0.0)
                         break
 
+    # --- 3. RESUMO (UC e Endereço) ---
+    ws_resumo = next((wb[s] for s in wb.sheetnames if "RESUMO" in s.upper()), None)
+    if ws_resumo:
+        linha_atual = 7
+        # Geradoras
+        for item in dados_estruturados:
+            if item['tipo'] == 'geradora' and item['dados']:
+                dados_ref = item['dados'][0]
+                safe_write(ws_resumo, "F", linha_atual, dados_ref.get("uc", ""))
+                safe_write(ws_resumo, "G", linha_atual, dados_ref.get("endereco", ""))
+                linha_atual += 1
+        
+        # Beneficiárias
+        for item in dados_estruturados:
+            if item['tipo'] == 'beneficiaria' and item['dados']:
+                dados_ref = item['dados'][0]
+                safe_write(ws_resumo, "F", linha_atual, dados_ref.get("uc", ""))
+                safe_write(ws_resumo, "G", linha_atual, dados_ref.get("endereco", ""))
+                linha_atual += 1
+                
     return wb
