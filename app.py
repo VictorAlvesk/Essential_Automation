@@ -15,7 +15,7 @@ st.subheader("Essencial Energia Eficiente")
 
 # --- BARRA LATERAL PARA CONFIGURAÇÃO ---
 with st.sidebar:
-    st.image("logo3.png", use_container_width=True)
+    st.image("logo3.png", width= 'stretch')
     st.header("⚙️ Configuração")
     
     # 1. Input crucial: Define qual lógica de código o sistema seguirá
